@@ -601,9 +601,17 @@ void zmq::udp_engine_t::in_event ()
     errno_assert (rc == 0);
     memcpy (msg.data (), _in_buffer + body_offset, body_size);
 
-    std::string address (inet_ntoa (reinterpret_cast<sockaddr_in*> (&in_address)->sin_addr));
-    metadata_t::dict_t dict {{ZMQ_MSG_PROPERTY_PEER_ADDRESS, address}};
-    msg.set_metadata(new (std::nothrow) metadata_t (dict));
+    if (in_address.ss_family == AF_INET) {
+        std::string address (inet_ntoa (reinterpret_cast<sockaddr_in*> (&in_address)->sin_addr));
+        metadata_t::dict_t dict {{ZMQ_MSG_PROPERTY_PEER_ADDRESS, std::move(address)}};
+        msg.set_metadata(new (std::nothrow) metadata_t (dict));
+    } else if (in_address.ss_family == AF_INET6) {
+        char address[INET6_ADDRSTRLEN];
+        auto address_bin = reinterpret_cast<sockaddr_in6*> (&in_address)->sin6_addr;
+        inet_ntop (AF_INET6, &address_bin, address, INET6_ADDRSTRLEN);
+        metadata_t::dict_t dict {{ZMQ_MSG_PROPERTY_PEER_ADDRESS, address}};
+        msg.set_metadata(new (std::nothrow) metadata_t (dict));
+    }
 
     // Push message body to session
     rc = _session->push_msg (&msg);
